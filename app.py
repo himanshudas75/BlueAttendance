@@ -64,9 +64,9 @@ def handle_mqtt_message(client, userdata, message):
     else:
         print("No data received.")
 
-@mqtt_client.on_log()
-def on_log(client, userdata, level, buf):
-    print("Log: ", buf)
+# @mqtt_client.on_log()
+# def on_log(client, userdata, level, buf):
+#     print("Log: ", buf)
 
 # Function to insert data into mappings table
 def insert_mapping(user, address):
