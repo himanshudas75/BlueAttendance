@@ -11,6 +11,7 @@ Attendance monitoring tool using NodeMCU ESP8266 and HC-05 Bluetooth Sensor.
     MQTT_BROKER_PORT=
     MQTT_USERNAME=
     MQTT_PASSWORD=
+    MONGO_URI=
     ```
 
 -   Install the requirements:

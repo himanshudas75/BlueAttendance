@@ -1,16 +1,19 @@
 import re
 import time
-import sqlite3
 from flask import Flask, request, render_template, redirect, url_for, jsonify
 import binascii
 from flask_mqtt import Mqtt, ssl
 from dotenv import load_dotenv
 import os
+from flask_pymongo import PyMongo
+from bson import ObjectId
 
 load_dotenv()
 app = Flask(__name__)
 
 THRESHOLD=0.5
+
+MONGO_URI = os.getenv('MONGO_URI')
 
 app.config['MQTT_BROKER_URL'] = os.getenv('MQTT_BROKER_URL')
 app.config['MQTT_BROKER_PORT'] = int(os.getenv('MQTT_BROKER_PORT'))
@@ -19,6 +22,10 @@ app.config['MQTT_PASSWORD'] = os.getenv('MQTT_PASSWORD')  # Set this item when y
 app.config['MQTT_KEEPALIVE'] = 5  # Set KeepAlive time in seconds
 app.config['MQTT_TLS_ENABLED'] = True  # If your server supports TLS, set it True
 app.config['MQTT_TLS_VERSION'] = ssl.PROTOCOL_TLS
+
+app.config["MONGO_URI"] = MONGO_URI
+mongodb_client = PyMongo(app)
+db = mongodb_client.db
 
 recv_topic = 'blue_attendance'
 send_topic = 'blue_config'
@@ -35,11 +42,10 @@ def handle_connect(client, userdata, flags, rc):
 
 # Function to insert data into SQLite database
 def insert_data(address, timestamp):
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO devices (address, timestamp) VALUES (?, ?)", (address, timestamp))
-    conn.commit()
-    conn.close()
+    db.attendance.insert_one({
+        'address': address.strip(),
+        'timestamp': timestamp
+    })
 
 @mqtt_client.on_message()
 def handle_mqtt_message(client, userdata, message):
@@ -62,48 +68,37 @@ def handle_mqtt_message(client, userdata, message):
 def on_log(client, userdata, level, buf):
     print("Log: ", buf)
 
-def create_db_tables():
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS devices
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT, timestamp INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS mappings
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, address TEXT)''')
-    conn.commit()
-    conn.close()
-
 # Function to insert data into mappings table
 def insert_mapping(user, address):
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO mappings (user, address) VALUES (?, ?)", (user, address))
-    conn.commit()
-    conn.close()
+    db.mappings.insert_one({
+        'user': user.strip(),
+        'address': address.strip()
+    })
 
 # Function to fetch all mappings from the mappings table
 def fetch_mappings():
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM mappings")
-    mappings = c.fetchall()
-    conn.close()
-    return mappings
+    mappings = list(db.mappings.find())
+    result = list()
+    for row in mappings:
+        row['_id'] = str(row['_id'])
+        result.append(row)
+    return result
 
 # Function to update mapping in the mappings table
 def update_mapping(id, user, address):
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("UPDATE mappings SET user = ?, address = ? WHERE id = ?", (user, address, id))
-    conn.commit()
-    conn.close()
+    db.mappings.update_one({
+        {'_id': ObjectId(id)},
+        {
+            'user': user,
+            'address': address
+        }
+    })
 
 # Function to delete mapping in the mappings table
 def delete_mapping(id):
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM mappings WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
+    db.mappings.delete_one({
+        '_id': ObjectId(id)
+    })
 
 @app.route('/mapping', methods=['GET', 'POST'])
 def mapping():
@@ -139,40 +134,34 @@ def stop():
 
 @app.route('/clear_attendance')
 def clear_attendance():
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM devices")
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
+    result = db.attendance.delete_many({})
+    if result.deleted_count > 0:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False})
 
 @app.route('/')
 def index():
-    conn = sqlite3.connect('storage.db')
-    c = conn.cursor()
-
-    c.execute("SELECT id, user FROM mappings")
-    users = c.fetchall()
-    
-    c.execute("SELECT COUNT(DISTINCT timestamp) FROM devices")
-    total = c.fetchone()[0]
+    users = fetch_mappings()
+    total = len(list(db.attendance.distinct("timestamp")))
 
     attendance = []
     threshold = request.args.get('threshold', type=float, default=0.5)
 
-    for id, user_name in users:
-        c.execute("SELECT COUNT(DISTINCT timestamp) FROM devices WHERE address IN (SELECT address FROM mappings WHERE id = ?)", (id,))
-        hits = c.fetchone()[0]
+    print(users)
+    for u in users:
+        user = u['user']
+        address = u['address']
+        
+        hits = len(list(db.attendance.distinct("timestamp", {"address": address})))
+
         if total > 0:
             presence = "Present" if (hits / total) > threshold else "Absent"
         else:
             presence = "N/A"
-        attendance.append((user_name, hits, total, presence))
-
-    conn.close()
+        attendance.append((user, hits, total, presence))
 
     return render_template('index.html', attendance=attendance)
 
 if __name__ == '__main__':
-    create_db_tables()
     app.run(host='0.0.0.0', debug=True)

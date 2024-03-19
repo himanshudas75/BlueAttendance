@@ -98,8 +98,8 @@
                     <tbody>
                         {% for mapping in mappings %}
                         <tr>
-                            <td>{{ mapping[1] }}</td>
-                            <td>{{ mapping[2] }}</td>
+                            <td>{{ mapping.user }}</td>
+                            <td>{{ mapping.address }}</td>
                             <td>
                                 <form method="POST" action="/mapping">
                                     <input
@@ -110,7 +110,7 @@
                                     <input
                                         type="hidden"
                                         name="id"
-                                        value="{{ mapping[0] }}"
+                                        value="{{ mapping._id }}"
                                     />
                                     <button
                                         type="submit"
