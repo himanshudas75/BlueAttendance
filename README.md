@@ -33,11 +33,11 @@ Attendance monitoring tool using NodeMCU ESP8266 and HC-05 Bluetooth Sensor.
 -   Modify these variables in the `nodemcu_code.ino` accordingly:
 
     ```c++
-    const char\* ssid = "<Enter SSID>";
-    const char\* password = "<Enter WIFI Password>";
-    const char\* mqtt_server = "MQTT_BROKER_URL";
-    const char\* mqtt_username = "MQTT_CLIENT_USERNAME";
-    const char\* mqtt_password = "MQTT_CLIENT_PASSWORD";
+    const char* ssid = "<Enter SSID>";
+    const char* password = "<Enter WIFI Password>";
+    const char* mqtt_server = "MQTT_BROKER_URL";
+    const char* mqtt_username = "MQTT_CLIENT_USERNAME";
+    const char* mqtt_password = "MQTT_CLIENT_PASSWORD";
     ```
 
 -   In the `PubSubClient.h` header file, modify the following:
