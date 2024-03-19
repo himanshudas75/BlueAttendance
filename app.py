@@ -148,7 +148,6 @@ def index():
     attendance = []
     threshold = request.args.get('threshold', type=float, default=0.5)
 
-    print(users)
     for u in users:
         user = u['user']
         address = u['address']
