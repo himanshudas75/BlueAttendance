@@ -97,12 +97,13 @@ char* read_output() {
         if(memcmp(buffer + buffer_size - 4, "OK\r\n", 4) == 0)
           break;
         else if(memcmp(buffer + buffer_size - 3, ")\r\n", 3) == 0){
+          initial_setup = true;
           free(buffer);
           buffer = NULL;
           break;
         }
       }
-
+      
     }
     else {
       counter+=1;
