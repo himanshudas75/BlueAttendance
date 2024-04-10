@@ -3,6 +3,14 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+#include <Arduino.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
+#include <WebSerial.h>
+
+#include <ESP8266mDNS.h>
+
 #define rx D6
 #define tx D5
 #define en D7
@@ -11,9 +19,6 @@
 #define MAX_DEVICES 9
 #define WAITING_TIME 5
 #define REGEX ".*(OK|ERROR:\\([0-9A-Za-z]+\\))\r\n"
-
-// #undef MQTT_MAX_MESSAGE_SIZE
-// #define MQTT_MAX_MESSAGE_SIZE 2000
 
 SoftwareSerial BT(rx, tx);
 const char* command_list[] = {
@@ -39,8 +44,20 @@ const char *clientId = "NodeMCU_Blue";
 const char* recv_topic = "blue_config";
 const char* send_topic = "blue_attendance";
 
+const char* hostname = "esp8266";
+
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
+AsyncWebServer server(80);
+
+void recvMsg(uint8_t *data, size_t len){
+  WebSerial.println("Received Data...");
+  String d = "";
+  for(int i=0; i < len; i++){
+    d += char(data[i]);
+  }
+  WebSerial.println(d);
+}
 
 void serialFlush() {
   while (Serial.available() > 0) {
@@ -87,23 +104,26 @@ char* read_output() {
     if (BT.available()) {
       counter=0;
       char x = BT.read();
-      Serial.print(x);
+      // WebSerial.print(x);
       buffer = (char*)realloc(buffer, buffer_size + 2);
       buffer[buffer_size] = x;
       buffer[buffer_size + 1] = '\0';
       buffer_size += 1;
 
       if(buffer_size >= 4){
-        if(memcmp(buffer + buffer_size - 4, "OK\r\n", 4) == 0)
+        if(memcmp(buffer + buffer_size - 4, "OK\r\n", 4) == 0){
+          WebSerial.print(buffer);
           break;
+        }
         else if(memcmp(buffer + buffer_size - 3, ")\r\n", 3) == 0){
+          WebSerial.print(buffer);
           initial_setup = true;
           free(buffer);
           buffer = NULL;
           break;
         }
       }
-      
+
     }
     else {
       counter+=1;
@@ -118,15 +138,6 @@ char* read_output() {
     }
   }
 
-    // int ret = match_regex(buffer);
-    // if (ret == 1) {
-    //   return buffer;
-    // }
-    // else{
-    //   if(buffer != NULL)
-    //     free(buffer);
-    //   return NULL;
-    // }
     return buffer;
 }
 
@@ -141,28 +152,28 @@ char* send_command(const char *command) {
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    WebSerial.print("Attempting MQTT connection...");
     if (client.connect(clientId, mqtt_username, mqtt_password)) {
-      Serial.println("connected");
+      WebSerial.println("connected");
       client.subscribe(recv_topic);
 
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      WebSerial.print("failed, rc=");
+      WebSerial.print(client.state());
+      WebSerial.println(" try again in 5 seconds");
       delay(5000);
     }
   }
 }
 
 void publishMessage(char* payload , boolean retained){
-  Serial.println(F("SENDING MESSAGE..."));
+  WebSerial.println(F("SENDING MESSAGE..."));
   if (!client.connected())
     reconnect();
   if (client.publish(send_topic, payload, retained))
-    Serial.println(F("MESSAGE SENT..."));
+    WebSerial.println(F("MESSAGE SENT..."));
   else
-    Serial.println(F("ERROR SENDING MESSAGE"));
+    WebSerial.println(F("ERROR SENDING MESSAGE"));
 }
 
 
@@ -175,7 +186,7 @@ void send_attendance(char *input) {
       free(hexified);
     }
     else {
-      Serial.println(F("WiFi Disconnected"));
+      WebSerial.println(F("WiFi Disconnected"));
     }
     
 }
@@ -187,21 +198,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message[i]=(char)payload[i];
   message[length] = '\0';
 
-  Serial.print("RECEIVED: ");
-  Serial.println(message);
+  WebSerial.print("RECEIVED: ");
+  WebSerial.println(message);
 
   if(strcmp(message, "START") == 0){
-    Serial.println(F("STARTING IOT..."));
+    WebSerial.println(F("STARTING IOT..."));
     active = true;
   }
 
   else if(strcmp(message, "STOP") == 0){
-    Serial.println(F("TERMINATING IOT..."));
+    WebSerial.println(F("TERMINATING IOT..."));
     active = false;
   }
 
   else{
-    Serial.println(F("UNKNOWN MESSAGE..."));
+    WebSerial.println(F("UNKNOWN MESSAGE..."));
   }
 }
 
@@ -215,6 +226,7 @@ void setup() {
   Serial.begin(9600);
 
   // Setup Wifi
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.println(F("Connecting"));
   while (WiFi.status() != WL_CONNECTED) {
@@ -224,6 +236,20 @@ void setup() {
   Serial.println("");
   Serial.print(F("Connected to WiFi network with IP Address: "));
   Serial.println(WiFi.localIP());
+
+  if(!MDNS.begin(hostname)){
+    Serial.println(F("Error starting mDNS"));
+    while (1) { delay(1000); }
+  }
+  Serial.println(F("mDNS started"));
+
+  WebSerial.begin(&server);
+  WebSerial.msgCallback(recvMsg);
+  AsyncElegantOTA.begin(&server);
+  server.begin();
+  Serial.println("HTTP server started");
+
+  MDNS.addService("http", "tcp", 80);
 
   delay(1000);
 
@@ -237,12 +263,15 @@ void setup() {
 }
 
 void loop() {
+
+  MDNS.update();
+
   if (!client.connected())
     reconnect();
   client.loop();
 
   if (initial_setup) {
-    Serial.println(F("INIT"));
+    WebSerial.println(F("INIT"));
     serialFlush();
     BTFlush();
 
@@ -251,19 +280,17 @@ void loop() {
     for (int i = 0; i < length; i++)
       send_command(command_list[i]);
 
-    Serial.println(F("INIT DONE"));
+    WebSerial.println(F("INIT DONE"));
     initial_setup = false;
 
     // digitalWrite(buzz, HIGH);
     // delay(500);
     // digitalWrite(buzz, LOW);
   }
-  
-  
 
   if(active){
     delay(3000);
-    Serial.println(F("SEARCHING FOR DEVICES"));
+    WebSerial.println(F("SEARCHING FOR DEVICES"));
 
     char* output = send_command("AT+INQ\r\n");
     if(output != NULL){
@@ -271,6 +298,6 @@ void loop() {
       free(output);
     }
 
-    Serial.println(F("SEARCHING DONE"));
+    WebSerial.println(F("SEARCHING DONE"));
   }
 }
