@@ -124,12 +124,12 @@ def mapping():
 
 @app.route('/start')
 def start():
-    publish_result = mqtt_client.publish(send_topic, 'START')
+    publish_result = mqtt_client.publish(send_topic, 'START', qos = 2)
     return jsonify({'code': publish_result[0]})
 
 @app.route('/stop')
 def stop():
-    publish_result = mqtt_client.publish(send_topic, 'STOP')
+    publish_result = mqtt_client.publish(send_topic, 'STOP', qos = 2)
     return jsonify({'code': publish_result[0]})
 
 @app.route('/clear_attendance')
