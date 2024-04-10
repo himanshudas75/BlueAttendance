@@ -152,7 +152,7 @@ char* send_command(const char *command) {
 
 void reconnect() {
   while (!client.connected()) {
-    WebSerial.print("Attempting MQTT connection...");
+    WebSerial.print("Attempting MQTT connection... ");
     if (client.connect(clientId, mqtt_username, mqtt_password)) {
       WebSerial.println("connected");
       client.subscribe(recv_topic);
@@ -167,13 +167,13 @@ void reconnect() {
 }
 
 void publishMessage(char* payload , boolean retained){
-  WebSerial.println(F("SENDING MESSAGE..."));
   if (!client.connected())
     reconnect();
+  WebSerial.print(F("Sending message... "));
   if (client.publish(send_topic, payload, retained))
-    WebSerial.println(F("MESSAGE SENT..."));
+    WebSerial.println(F("sent"));
   else
-    WebSerial.println(F("ERROR SENDING MESSAGE"));
+    WebSerial.println(F("error"));
 }
 
 
@@ -198,21 +198,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message[i]=(char)payload[i];
   message[length] = '\0';
 
-  WebSerial.print("RECEIVED: ");
+  WebSerial.print("Received message: ");
   WebSerial.println(message);
 
   if(strcmp(message, "START") == 0){
-    WebSerial.println(F("STARTING IOT..."));
+    WebSerial.println(F("Starting device..."));
     active = true;
   }
 
   else if(strcmp(message, "STOP") == 0){
-    WebSerial.println(F("TERMINATING IOT..."));
+    WebSerial.println(F("Terminating Device..."));
     active = false;
   }
 
   else{
-    WebSerial.println(F("UNKNOWN MESSAGE..."));
+    WebSerial.println(F("Unknown Message Received..."));
   }
 }
 
@@ -271,7 +271,7 @@ void loop() {
   client.loop();
 
   if (initial_setup) {
-    WebSerial.println(F("INIT"));
+    WebSerial.println(F("Initializing..."));
     serialFlush();
     BTFlush();
 
@@ -280,24 +280,26 @@ void loop() {
     for (int i = 0; i < length; i++)
       send_command(command_list[i]);
 
-    WebSerial.println(F("INIT DONE"));
+    WebSerial.println(F("Done"));
     initial_setup = false;
 
     // digitalWrite(buzz, HIGH);
     // delay(500);
     // digitalWrite(buzz, LOW);
   }
-
+  
   if(active){
     delay(3000);
-    WebSerial.println(F("SEARCHING FOR DEVICES"));
+    WebSerial.println(F("\nSearching for devices"));
 
     char* output = send_command("AT+INQ\r\n");
+
+    WebSerial.println(F("Searching done"));
+
     if(output != NULL){
       send_attendance(output);
       free(output);
     }
-
-    WebSerial.println(F("SEARCHING DONE"));
+ 
   }
 }
