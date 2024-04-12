@@ -12,6 +12,10 @@ Attendance monitoring tool using NodeMCU ESP8266 and HC-05 Bluetooth Sensor.
     MQTT_USERNAME=
     MQTT_PASSWORD=
     MONGO_URI=
+    MAIL_USERNAME=
+    MAIL_PASSWORD=
+    MAIL_SERVER=
+    MAIL_PORT=
     ```
 
 -   Install the requirements:
@@ -50,7 +54,5 @@ Attendance monitoring tool using NodeMCU ESP8266 and HC-05 Bluetooth Sensor.
     ```
 
 -   Upload your code
-
-
 
 This project was done under the mentorship of Prof. Tarachand Amgoth, students: [@himanshudas75](https://github.com/himanshudas75/), [@imraunn](https://github.com/imraunn/) and [@soumyashree04](https://github.com/soumyashree04/)

@@ -30,8 +30,8 @@ app.config['MQTT_TLS_VERSION'] = ssl.PROTOCOL_TLS
 
 app.config["MONGO_URI"] = MONGO_URI
 
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 465
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT'))
 app.config['MAIL_USE_SSL'] = True
 app.config['MAIL_USERNAME'] = MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
