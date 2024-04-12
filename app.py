@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 import os
 from flask_pymongo import PyMongo
 from bson import ObjectId
+from datetime import date, datetime
+from flask_mail import Mail, Message
+import pandas as pd
+from io import BytesIO
+from time import sleep
 
 load_dotenv()
 app = Flask(__name__)
@@ -24,8 +29,16 @@ app.config['MQTT_TLS_ENABLED'] = True  # If your server supports TLS, set it Tru
 app.config['MQTT_TLS_VERSION'] = ssl.PROTOCOL_TLS
 
 app.config["MONGO_URI"] = MONGO_URI
+
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USE_SSL'] = True
+app.config['MAIL_USERNAME'] = MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+
 mongodb_client = PyMongo(app)
 db = mongodb_client.db
+mail = Mail(app)
 
 recv_topic = 'blue_attendance'
 send_topic = 'blue_config'
@@ -100,6 +113,50 @@ def delete_mapping(id):
         '_id': ObjectId(id)
     })
 
+def calculate_attendance(threshold):
+    users = fetch_mappings()
+    attendance = []
+    total = len(list(db.attendance.distinct("timestamp")))
+
+    for u in users:
+        user = u['user']
+        address = u['address']
+        
+        hits = len(list(db.attendance.distinct("timestamp", {"address": address})))
+
+        if total > 0:
+            presence = "Present" if (hits / total) > threshold else "Absent"
+        else:
+            presence = "N/A"
+        attendance.append((user, hits, total, presence))
+    
+    return attendance
+
+def send_email(attendance, course, date, recipient):
+    try:
+        subject=f"Attendance {course} {date}"
+
+        msg = Message(subject=subject, sender=MAIL_USERNAME, recipients=[recipient])
+        msg.body = f"""Please find attached the attendance report for {course} class conducted on {date}.\nShould you need any clarification or assistance, please feel free to reach out to us."""
+        df = pd.DataFrame(attendance, columns=['User', 'Presence'])
+
+        excel_buffer = BytesIO()
+        df.to_excel(excel_buffer, index=False)
+
+        excel_buffer.seek(0)
+
+        msg.attach("attendance_report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excel_buffer.read())
+        
+        excel_buffer.close()
+
+        mail.send(msg)
+        sleep(1)
+
+        return 0
+    except Exception as e:
+        print(e)
+        return 1
+
 @app.route('/mapping', methods=['GET', 'POST'])
 def mapping():
     if request.method == 'GET':
@@ -140,27 +197,35 @@ def clear_attendance():
     else:
         return jsonify({'success': False})
 
+@app.route('/submit_attendance', methods=['POST'])
+def submit_attendance():
+    course = request.form['course']
+    date_of_attendance = request.form['date']
+    threshold = float(request.form['threshold'])
+    recipient = request.form['recipient']
+
+    attendance = calculate_attendance(threshold)
+    attendance = [(x[0], x[-1]) for x in attendance]
+    
+    date_of_attendance = datetime.strptime(date_of_attendance, '%Y-%m-%d')
+
+    db.course_attendance.insert_one({
+        'course_code': course,
+        'date': date_of_attendance,
+        'attendance': attendance
+    })
+
+    send_email(attendance, course, date_of_attendance, recipient)
+
+    return redirect('/')
+
 @app.route('/')
 def index():
-    users = fetch_mappings()
-    total = len(list(db.attendance.distinct("timestamp")))
-
-    attendance = []
     threshold = request.args.get('threshold', type=float, default=0.5)
+    attendance = calculate_attendance(threshold)
+    current_date = date.today().isoformat()
 
-    for u in users:
-        user = u['user']
-        address = u['address']
-        
-        hits = len(list(db.attendance.distinct("timestamp", {"address": address})))
-
-        if total > 0:
-            presence = "Present" if (hits / total) > threshold else "Absent"
-        else:
-            presence = "N/A"
-        attendance.append((user, hits, total, presence))
-
-    return render_template('index.html', attendance=attendance)
+    return render_template('index.html', current_date=current_date, attendance=attendance)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
