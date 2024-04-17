@@ -125,20 +125,33 @@ def calculate_attendance(threshold):
         hits = len(list(db.attendance.distinct("timestamp", {"address": address})))
 
         if total > 0:
-            presence = "Present" if (hits / total) > threshold else "Absent"
+            presence = 1 if (hits / total) > threshold else 0
         else:
-            presence = "N/A"
+            presence = -1
+        
         attendance.append((user, hits, total, presence))
     
+    attendance.sort()
+
     return attendance
 
 def send_email(attendance, course, date, recipient):
     try:
         subject=f"Attendance {course} {date}"
 
+        new_attendance = list()
+        for x in attendance:
+            if x[1] == 1:
+                second_term = 'Present'
+            elif x[1] == 0:
+                second_term = 'Absent'
+            else:
+                second_term = 'N/A'
+            new_attendance.append((x[0], second_term))
+
         msg = Message(subject=subject, sender=MAIL_USERNAME, recipients=[recipient])
         msg.body = f"""Please find attached the attendance report for {course} class conducted on {date}.\nShould you need any clarification or assistance, please feel free to reach out to us."""
-        df = pd.DataFrame(attendance, columns=['User', 'Presence'])
+        df = pd.DataFrame(new_attendance, columns=['User', 'Presence'])
 
         excel_buffer = BytesIO()
         df.to_excel(excel_buffer, index=False)
@@ -205,19 +218,87 @@ def submit_attendance():
     recipient = request.form['recipient']
 
     attendance = calculate_attendance(threshold)
-    attendance = [(x[0], x[-1]) for x in attendance]
+    attendance = [(x[0], x[-1]) for x in attendance if x[-1] >= 0]
+    attendance_dict = dict()
+    for x in attendance:
+        attendance_dict[x[0]] = x[1]
     
     date_of_attendance = datetime.strptime(date_of_attendance, '%Y-%m-%d')
 
-    db.course_attendance.insert_one({
-        'course_code': course,
-        'date': date_of_attendance,
-        'attendance': attendance
-    })
+    existing_row = db.course_attendance.find_one({'course_code': course})
+
+    if existing_row:
+        existing_row['attendance_by_date'].append({
+            'date': date_of_attendance,
+            'students': attendance
+        })
+        
+        for x in attendance:
+            if x[0] in existing_row['attendance'].keys():
+                existing_row['attendance'][x[0]] += x[1]
+            else:
+                existing_row['attendance'][x[0]] = x[1]
+        
+        existing_row['classes'] += 1
+
+        db.course_attendance.update_one(
+            {'course_code': course},
+            {'$set': existing_row}
+        )
+    else:
+        final_row = {
+            'course_code': course,
+            'attendance_by_date': [
+                {
+                    'date': date_of_attendance,
+                    'students': attendance_dict
+                }
+            ],
+            'attendance': attendance_dict,
+            'classes': 1
+        }
+        db.course_attendance.insert_one(final_row)
 
     send_email(attendance, course, date_of_attendance, recipient)
 
     return redirect('/')
+
+@app.route('/attendance', methods=['GET'])
+def attendance():
+    attendance_by = request.args.get('attendance_by', type=str, default='NULL')
+    filter = request.args.get('filter', type=str, default='NULL')
+    options = list()
+    if attendance_by == 'course':
+        options = db.course_attendance.distinct('course_code')
+    elif attendance_by == 'student':
+        options = db.mappings.distinct('user')
+    
+    final_attendance = list()
+
+    if attendance_by != 'NULL' and filter != 'NULL':
+        if attendance_by == 'student':
+            courses = list(db.course_attendance.find({}))
+            for course in courses:
+                attendance = course['attendance']
+                if filter in attendance.keys():
+                    course_name = course['course_code']
+                    present = attendance[filter]
+                    classes = course['classes']
+                    absent = classes - present
+                    percent = (present * 100)//classes
+                    final_attendance.append((course_name, present, absent, classes, percent))
+        elif attendance_by == 'course':
+            course = db.course_attendance.find_one({'course_code': filter})
+            attendance = course['attendance']
+            classes = course['classes']
+            for student in attendance:
+                present = attendance[student]
+                absent = classes - present
+                percent = (present * 100)//classes
+                final_attendance.append((student, present, absent, classes, percent))
+
+    final_attendance.sort()
+    return render_template('attendance.html', attendance_by=attendance_by, filter=filter, options=options, attendance=final_attendance)
 
 @app.route('/')
 def index():

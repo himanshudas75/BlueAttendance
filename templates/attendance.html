@@ -1,0 +1,79 @@
+{% extends "base.html" %} {% block attendance_active %} active {% endblock %} {%
+    block content %}
+    <div>
+        <form class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">View Attendance by</label>
+            </div>
+            <div class="col-md-2">
+                <label class="radio-inline">
+                    <input type="radio" id="student" name="attendance_by"
+                    value="student" onclick="document.getElementById('filter').value = 'NULL'; this.form.submit()" {% if attendance_by
+                    == "student" %} checked {% endif %} /> Student
+                </label>
+            </div>
+            <div class="col-md-2">
+                <label class="radio-inline">
+                    <input type="radio" id="course" name="attendance_by"
+                    value="course" onclick="document.getElementById('filter').value = 'NULL'; this.form.submit()" {% if attendance_by
+                    == "course" %} checked {% endif %} /> Course
+                </label>
+            </div>
+    
+            <div class="col-md-6"></div>
+                <label for="threshold" class="col-md-2 col-form-label"
+                    >Filter</label
+                >
+                <div class="col-md-4">
+                    <select
+                        id="filter"
+                        name="filter"
+                        class="form-select"
+                        onchange="this.form.submit()"
+                    >
+                        <option value="NULL" {% if filter == "NULL" %} selected {% endif %}>Select Filter</option>
+                        {% for option in options %}
+                        <option
+                            value="{{ option }}"
+                            {% if filter == option %}
+                            selected
+                            {% endif %}
+                        >
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+        </form>
+    </div>
+    
+    {% if attendance_by != "NULL" and filter != "NULL" %}
+    <div class="mt-5">
+        <h4>Attendance</h4>
+        <table class="table table-striped mt-4">
+            <thead class="table-dark">
+                <tr>
+                    <th>{% if attendance_by == 'student' %} Course {% elif attendance_by == 'course' %} Student {% endif %}</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Total Classes</th>
+                    <th>Percent</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for x in attendance %}
+                <tr>
+                    <td>{{ x[0] }}</td>
+                    <td>{{ x[1] }}</td>
+                    <td>{{ x[2] }}</td>
+                    <td>{{ x[3] }}</td>
+                    <td>{{ x[4] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    
+    {% endblock %}
+    
