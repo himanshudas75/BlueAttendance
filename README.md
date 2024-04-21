@@ -1,4 +1,4 @@
-# BlueAttendance
+# SwiftScan
 
 Attendance monitoring tool using NodeMCU ESP8266 and HC-05 Bluetooth Sensor.
 
